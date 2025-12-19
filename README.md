@@ -9,7 +9,7 @@ Simple REST API for a tree structure (NestJS + Postgres + Prisma).
 
 ## Quickstart
 
-### Prereqs
+### Prerequisites
 
 - Docker + Docker Compose
 - Node.js (for running tests locally)
@@ -34,6 +34,8 @@ If you don’t have `just` installed:
 ```bash
 docker compose up -d --build
 ```
+
+This starts Postgres, runs migrations via a one-shot `migrate` job, then starts the API.
 
 3. Confirm it’s running:
 
@@ -105,4 +107,4 @@ npm run start:dev
 
 ## Future Improvements
 
-- Slim the API runtime Docker image: currently the runtime stage copies the full `node_modules` (including dev deps) so the Prisma CLI is available to run `prisma migrate deploy` on container start; reduce image size/attack surface by installing only production deps and/or using a dedicated migration step.
+- Further tighten Docker production hardening (e.g., non-root user, read-only filesystem, and CI image scanning).

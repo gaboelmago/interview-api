@@ -19,10 +19,10 @@ logs:
 # Apply migrations to the database.
 migrate: check-env
   docker compose up -d db
-  npx prisma migrate deploy
+  docker compose run --rm migrate
 
 # Run the full test suite (ensures DB is up + migrated).
 test: check-env
   docker compose up -d db
-  npx prisma migrate deploy
+  docker compose run --rm migrate
   npm test

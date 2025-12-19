@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import * as request from "supertest";
 
 import { AppModule } from "../src/app.module";
+import { AllExceptionsFilter } from "../src/common/filters/all-exceptions.filter";
 import { PrismaService } from "../src/prisma/prisma.service";
 
 async function resetDb(prisma: PrismaService) {
@@ -11,23 +12,29 @@ async function resetDb(prisma: PrismaService) {
   );
 }
 
+async function createTestApp() {
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
+
+  const app = moduleRef.createNestApplication();
+  app.setGlobalPrefix("api");
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    })
+  );
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  await app.init();
+  return { app, moduleRef };
+}
+
 describe("Tree API (e2e)", () => {
   it("GET /api/tree returns 200 and []", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -37,22 +44,26 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("unknown route returns 404 with consistent error shape", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .get("/api/does-not-exist")
+      .expect(404);
+
+    expect(res.body).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: "Cannot GET /api/does-not-exist",
+      path: "/api/does-not-exist",
+      timestamp: expect.any(String),
+    });
+
+    await app.close();
+  });
+
   it("GET /api/tree returns seeded nested output", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -86,21 +97,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("GET /api/tree returns multiple root nodes", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -120,21 +117,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("GET /api/tree supports deep nesting (>2 levels)", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -177,21 +160,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("POST /api/tree with empty body returns 400", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app } = await createTestApp();
 
     await request(app.getHttpServer())
       .post("/api/tree")
@@ -203,21 +172,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("POST /api/tree with valid body returns 201, persists, and appears under parent", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -256,22 +211,119 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("POST creates nodes at various depths across multiple trees; GET returns full nested trees", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    // Seed multiple roots (API doesn't create roots today)
+    const rootA = await prisma.treeNode.create({ data: { label: "root-a" } });
+    const rootB = await prisma.treeNode.create({ data: { label: "root-b" } });
+    const rootC = await prisma.treeNode.create({ data: { label: "root-c" } });
+
+    // Add children under rootA (multiple siblings)
+    const a1Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a-1", parentId: rootA.id })
+      .expect(201);
+    const a1 = a1Res.body as { id: number; label: string; parentId: number };
+
+    const a2Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a-2", parentId: rootA.id })
+      .expect(201);
+    const a2 = a2Res.body as { id: number; label: string; parentId: number };
+
+    // Add grandchildren under a1
+    const a11Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a-1-1", parentId: a1.id })
+      .expect(201);
+    const a11 = a11Res.body as { id: number; label: string; parentId: number };
+
+    const a12Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a-1-2", parentId: a1.id })
+      .expect(201);
+    const a12 = a12Res.body as { id: number; label: string; parentId: number };
+
+    // Add great-grandchild under a12 (depth 3)
+    const a121Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a-1-2-1", parentId: a12.id })
+      .expect(201);
+    const a121 = a121Res.body as {
+      id: number;
+      label: string;
+      parentId: number;
+    };
+
+    // Add children under rootB
+    const b1Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "b-1", parentId: rootB.id })
+      .expect(201);
+    const b1 = b1Res.body as { id: number; label: string; parentId: number };
+
+    // Add grandchild under b1
+    const b11Res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "b-1-1", parentId: b1.id })
+      .expect(201);
+    const b11 = b11Res.body as { id: number; label: string; parentId: number };
+
+    // rootC stays empty
+
+    await request(app.getHttpServer())
+      .get("/api/tree")
+      .expect(200)
+      .expect([
+        {
+          id: rootA.id,
+          label: "root-a",
+          children: [
+            {
+              id: a1.id,
+              label: "a-1",
+              children: [
+                { id: a11.id, label: "a-1-1", children: [] },
+                {
+                  id: a12.id,
+                  label: "a-1-2",
+                  children: [{ id: a121.id, label: "a-1-2-1", children: [] }],
+                },
+              ],
+            },
+            { id: a2.id, label: "a-2", children: [] },
+          ],
+        },
+        {
+          id: rootB.id,
+          label: "root-b",
+          children: [
+            {
+              id: b1.id,
+              label: "b-1",
+              children: [{ id: b11.id, label: "b-1-1", children: [] }],
+            },
+          ],
+        },
+        { id: rootC.id, label: "root-c", children: [] },
+      ]);
+
+    await app.close();
+  });
+
   it("POST /api/tree missing label returns 400", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -287,21 +339,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("POST /api/tree non-integer parentId returns 400", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app } = await createTestApp();
 
     await request(app.getHttpServer())
       .post("/api/tree")
@@ -313,21 +351,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("POST /api/tree with nonexistent parentId returns 404", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app, moduleRef } = await createTestApp();
 
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
@@ -343,21 +367,7 @@ describe("Tree API (e2e)", () => {
   });
 
   it("POST /api/tree with invalid JSON returns 400", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    const app = moduleRef.createNestApplication();
-    app.setGlobalPrefix("api");
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      })
-    );
-
-    await app.init();
+    const { app } = await createTestApp();
 
     await request(app.getHttpServer())
       .post("/api/tree")

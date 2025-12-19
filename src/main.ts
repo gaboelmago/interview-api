@@ -7,6 +7,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module";
+import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { getApiPort } from "./config/api-port";
 
 async function bootstrap() {
@@ -20,6 +21,8 @@ async function bootstrap() {
       transform: true,
     })
   );
+
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   await app.listen(getApiPort());
 }

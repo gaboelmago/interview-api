@@ -1,0 +1,71 @@
+name: CI (work in progress)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      POSTGRES_DB: interview_api
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_PORT: "5432"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/interview_api?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Node version from .tool-versions
+        id: node
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(awk '$1=="nodejs" {print $2; exit}' .tool-versions)
+          if [[ -z "${version:-}" ]]; then
+            echo "Could not find 'nodejs <version>' in .tool-versions" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Start Postgres (Docker Compose)
+        run: docker compose up -d db
+
+      - name: Wait for Postgres to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if docker compose exec -T db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i/30)"
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2
+          docker compose logs db || true
+          exit 1
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Run tests (full)
+        run: npm test
+
+      - name: Shutdown Docker Compose
+        if: always()
+        run: docker compose down -v

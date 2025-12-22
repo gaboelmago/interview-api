@@ -171,6 +171,58 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("POST /api/tree creates a new root when parentId is missing", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const createdRes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "root" })
+      .expect(201);
+
+    expect(createdRes.body).toEqual({
+      id: expect.any(Number),
+      label: "root",
+      parentId: null,
+    });
+
+    await request(app.getHttpServer())
+      .get("/api/tree")
+      .expect(200)
+      .expect([{ id: createdRes.body.id, label: "root", children: [] }]);
+
+    await app.close();
+  });
+
+  it("POST /api/tree creates a new root when parentId is null", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const createdRes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "root", parentId: null })
+      .expect(201);
+
+    expect(createdRes.body).toEqual({
+      id: expect.any(Number),
+      label: "root",
+      parentId: null,
+    });
+
+    await request(app.getHttpServer())
+      .get("/api/tree")
+      .expect(200)
+      .expect([{ id: createdRes.body.id, label: "root", children: [] }]);
+
+    await app.close();
+  });
+
   it("POST /api/tree with valid body returns 201, persists, and appears under parent", async () => {
     const { app, moduleRef } = await createTestApp();
 
@@ -217,10 +269,39 @@ describe("Tree API (e2e)", () => {
     const prisma = moduleRef.get(PrismaService);
     await resetDb(prisma);
 
-    // Seed multiple roots (API doesn't create roots today)
-    const rootA = await prisma.treeNode.create({ data: { label: "root-a" } });
-    const rootB = await prisma.treeNode.create({ data: { label: "root-b" } });
-    const rootC = await prisma.treeNode.create({ data: { label: "root-c" } });
+    // Create multiple roots via the API
+    const rootARes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "root-a" })
+      .expect(201);
+    const rootA = rootARes.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
+
+    const rootBRes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "root-b" })
+      .expect(201);
+    const rootB = rootBRes.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
+
+    const rootCRes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "root-c" })
+      .expect(201);
+    const rootC = rootCRes.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     // Add children under rootA (multiple siblings)
     const a1Res = await request(app.getHttpServer())
@@ -228,14 +309,22 @@ describe("Tree API (e2e)", () => {
       .set("content-type", "application/json")
       .send({ label: "a-1", parentId: rootA.id })
       .expect(201);
-    const a1 = a1Res.body as { id: number; label: string; parentId: number };
+    const a1 = a1Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     const a2Res = await request(app.getHttpServer())
       .post("/api/tree")
       .set("content-type", "application/json")
       .send({ label: "a-2", parentId: rootA.id })
       .expect(201);
-    const a2 = a2Res.body as { id: number; label: string; parentId: number };
+    const a2 = a2Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     // Add grandchildren under a1
     const a11Res = await request(app.getHttpServer())
@@ -243,14 +332,22 @@ describe("Tree API (e2e)", () => {
       .set("content-type", "application/json")
       .send({ label: "a-1-1", parentId: a1.id })
       .expect(201);
-    const a11 = a11Res.body as { id: number; label: string; parentId: number };
+    const a11 = a11Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     const a12Res = await request(app.getHttpServer())
       .post("/api/tree")
       .set("content-type", "application/json")
       .send({ label: "a-1-2", parentId: a1.id })
       .expect(201);
-    const a12 = a12Res.body as { id: number; label: string; parentId: number };
+    const a12 = a12Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     // Add great-grandchild under a12 (depth 3)
     const a121Res = await request(app.getHttpServer())
@@ -261,7 +358,7 @@ describe("Tree API (e2e)", () => {
     const a121 = a121Res.body as {
       id: number;
       label: string;
-      parentId: number;
+      parentId: number | null;
     };
 
     // Add children under rootB
@@ -270,7 +367,11 @@ describe("Tree API (e2e)", () => {
       .set("content-type", "application/json")
       .send({ label: "b-1", parentId: rootB.id })
       .expect(201);
-    const b1 = b1Res.body as { id: number; label: string; parentId: number };
+    const b1 = b1Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     // Add grandchild under b1
     const b11Res = await request(app.getHttpServer())
@@ -278,7 +379,11 @@ describe("Tree API (e2e)", () => {
       .set("content-type", "application/json")
       .send({ label: "b-1-1", parentId: b1.id })
       .expect(201);
-    const b11 = b11Res.body as { id: number; label: string; parentId: number };
+    const b11 = b11Res.body as {
+      id: number;
+      label: string;
+      parentId: number | null;
+    };
 
     // rootC stays empty
 

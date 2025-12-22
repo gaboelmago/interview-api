@@ -9,11 +9,24 @@ Simple REST API for a tree structure (NestJS + Postgres + Prisma).
 
 ## Quickstart
 
-### Prerequisites
+## Prerequisites
 
-- Docker + Docker Compose
-- Node.js (for running tests locally)
-- Optional but recommended: `just` (one-command workflows)
+- **[Docker & Docker Compose](https://docs.docker.com/get-docker/)**
+
+  - Includes Docker Compose in Docker Desktop (macOS, Windows, Linux)
+
+- **[asdf](https://asdf-vm.com/)** (recommended)
+
+  - This repo pins Node version in `.tool-versions`
+  - Install the Node.js plugin and run `asdf install`
+
+- **[Node.js v22.15.0](https://nodejs.org/en/download)**
+
+  - If you don’t use asdf, install Node manually
+
+- **[`just`](https://github.com/casey/just#installation)**
+  - A handy command runner for one-command workflows
+  - Optional but recommended
 
 ### Run with Docker (recommended)
 
@@ -83,7 +96,8 @@ curl -sS -X POST http://localhost:${API_PORT:-3000}/api/tree \
 
 ## Tests
 
-- Run: `just test` (recommended) or `npm test`
+- Fast (no DB): `npm run test:fast`
+- Full (requires Postgres): `just test` (recommended) or `npm test`
 - Style: integration-style tests boot a real Nest app via `@nestjs/testing` and hit it via `supertest`.
 - DB: tests expect Postgres to be available and use Prisma; e2e tests reset state by truncating the `TreeNode` table.
 
@@ -94,8 +108,9 @@ curl -sS -X POST http://localhost:${API_PORT:-3000}/api/tree \
 
 ## Git Hooks
 
-- This repo uses Husky to run `npm run lint` and `npm test` on every commit.
-- Hooks are installed automatically after `npm install` via the `prepare` script.
+- This repo uses a minimal `core.hooksPath` setup to run a pre-commit hook from `.githooks/`.
+- Local pre-commit runs: `npm run lint` and `npm run test:fast` (DB-free).
+- Hooks are configured automatically after `npm install` via the `prepare` script.
 - To bypass hooks intentionally: `git commit --no-verify`
 
 3. Install and run the API:

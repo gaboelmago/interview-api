@@ -49,6 +49,13 @@ export class TreeService {
   }
 
   async createNode(dto: CreateTreeNodeDto) {
+    if (dto.parentId == null) {
+      return this.prisma.treeNode.create({
+        data: { label: dto.label },
+        select: { id: true, label: true, parentId: true },
+      });
+    }
+
     const parent = await this.prisma.treeNode.findUnique({
       where: { id: dto.parentId },
       select: { id: true },

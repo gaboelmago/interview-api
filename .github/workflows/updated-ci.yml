@@ -1,0 +1,195 @@
+name: Interview API CI (Updated)
+
+on:
+  push:
+    branches: [dev]
+
+env:
+  NODE_VERSION: 22.15.0
+
+  POSTGRES_DB: interview_api
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_PORT: 5432
+
+  # Runner -> Postgres (via port mapping from docker-compose)
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/interview_api?schema=public
+
+jobs:
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+  lint:
+    name: Lint
+    needs: install
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  test:
+    name: Unit Tests (DB-free)
+    needs: install
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:fast
+
+  build:
+    name: Build (TypeScript)
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: E2E (Docker Compose + black-box Jest)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API runner image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runner
+          load: true
+          tags: interview-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build migrator image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: migrator
+          load: true
+          tags: interview-api-migrator:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write Compose override (use prebuilt images)
+        run: |
+          cat > docker-compose.ci.yml <<'YAML'
+          services:
+            migrate:
+              image: interview-api-migrator:ci
+              build: null
+            api:
+              image: interview-api:ci
+              build: null
+          YAML
+
+      - name: Ensure clean stack (fresh DB)
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+
+      - name: Start stack (db + migrate + api)
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d db migrate api
+
+      - name: Show migrate logs
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color migrate
+
+      - name: Wait for API readiness (/api/health)
+        run: |
+          set -euo pipefail
+          echo "Waiting for API to become ready..."
+          for i in {1..45}; do
+            if curl -fsS http://localhost:3000/api/health >/dev/null; then
+              echo "API is ready."
+              exit 0
+            fi
+            echo "Still waiting ($i/45)..."
+            sleep 2
+          done
+
+          echo "\nERROR: API did not become ready in time. Dumping diagnostics..."
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color db migrate api
+          exit 1
+
+      - name: Install dependencies (for test runner)
+        run: npm ci
+
+      - name: Run black-box E2E suite (HTTP only)
+        run: npm run e2e:blackbox:run
+        env:
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color db migrate api
+
+      - name: Shutdown
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

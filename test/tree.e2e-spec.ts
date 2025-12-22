@@ -33,6 +33,17 @@ async function createTestApp() {
 }
 
 describe("Tree API (e2e)", () => {
+  it("GET /api/health returns 200 and {status: ok}", async () => {
+    const { app } = await createTestApp();
+
+    await request(app.getHttpServer())
+      .get("/api/health")
+      .expect(200)
+      .expect({ status: "ok" });
+
+    await app.close();
+  });
+
   it("GET /api/tree returns 200 and []", async () => {
     const { app, moduleRef } = await createTestApp();
 

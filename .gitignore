@@ -12,6 +12,9 @@ yarn-error.log*
 # tests / coverage
 coverage/
 
+# load test outputs
+load/k6/results/
+
 # env
 .env
 

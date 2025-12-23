@@ -8,14 +8,19 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main.js",
+    "start:prod": "node dist/src/main.js",
     "prepare": "node scripts/setup-git-hooks.mjs",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "lint:fix": "eslint --fix \"src/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "test": "jest --config jest.config.ts --runInBand",
     "test:fast": "jest --config jest.config.ts --runInBand test/api-port.spec.ts test/create-tree-node.dto.spec.ts",
     "e2e:blackbox:run": "jest --config jest.blackbox-e2e.config.ts --runInBand",
-    "e2e:blackbox": "node scripts/run-blackbox-e2e.mjs"
+    "e2e:blackbox": "node scripts/run-blackbox-e2e.mjs",
+    "seed:trees": "npx ts-node --transpile-only prisma/seed-trees.ts",
+    "load:up": "docker compose up -d --build db migrate api",
+    "load:down": "docker compose down -v",
+    "load:tree": "REPORT_NAME=\"${REPORT_NAME:-tree-baseline}\"; BASE_URL=\"${BASE_URL:-http://host.docker.internal:3000}\"; VUS=\"${VUS:-25}\"; DURATION=\"${DURATION:-1m}\"; mkdir -p load/k6/results && docker run --rm -i -v \"$PWD/load/k6:/scripts\" -e BASE_URL=\"$BASE_URL\" -e VUS=\"$VUS\" -e DURATION=\"$DURATION\" -e K6_WEB_DASHBOARD=true -e K6_WEB_DASHBOARD_EXPORT=\"/scripts/results/$REPORT_NAME.html\" grafana/k6 run --summary-export \"/scripts/results/$REPORT_NAME.summary.json\" -e BASE_URL=\"$BASE_URL\" -e VUS=\"$VUS\" -e DURATION=\"$DURATION\" /scripts/tree-baseline.js",
+    "load:stress": "node scripts/run-local-load-stress.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",

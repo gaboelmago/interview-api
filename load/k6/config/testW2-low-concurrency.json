@@ -1,0 +1,20 @@
+{
+  "id": "testW2",
+  "name": "Write Low Concurrency (Light Contention)",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "scenario": {
+    "executor": "constant-arrival-rate",
+    "rate": 10,
+    "timeUnit": "1s",
+    "duration": "2m",
+    "preAllocatedVUs": 5,
+    "maxVUs": 5
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "checks": ["rate==1"],
+    "http_req_duration": ["p(95)<1000"]
+  }
+}

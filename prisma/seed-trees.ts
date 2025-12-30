@@ -36,9 +36,24 @@ const DATASETS = {
 const DATASET =
   (process.env.DATASET as keyof typeof DATASETS | undefined) ?? "stress";
 
+const SEED = process.env.SEED ? Number.parseInt(process.env.SEED, 10) : null;
+
 const MAX_NODES = process.env.MAX_NODES
   ? Number.parseInt(process.env.MAX_NODES, 10)
   : null;
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return function random() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const random = SEED == null ? Math.random : mulberry32(SEED);
 
 type NodeRow = {
   id: number;
@@ -93,7 +108,7 @@ async function main() {
   for (let r = 1; r <= config.roots; r++) {
     const depth =
       config.minDepth +
-      Math.floor(Math.random() * (config.maxDepth - config.minDepth + 1));
+      Math.floor(random() * (config.maxDepth - config.minDepth + 1));
 
     createSubtree(null, [r], 1, depth, config.branchingFactor);
   }
@@ -101,6 +116,12 @@ async function main() {
   await prisma.treeNode.createMany({
     data: rows,
   });
+
+  // createMany() inserts explicit IDs, which does not advance the Postgres sequence.
+  // Reset the sequence so subsequent inserts (without explicit IDs) don't collide.
+  await prisma.$executeRawUnsafe(
+    `SELECT setval(pg_get_serial_sequence('"TreeNode"','id'), (SELECT COALESCE(MAX(id), 1) FROM "TreeNode"), true);`
+  );
 
   console.log(`Inserted ${rows.length} nodes`);
 }

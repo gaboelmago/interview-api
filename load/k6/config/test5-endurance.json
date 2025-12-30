@@ -1,0 +1,20 @@
+{
+  "id": "test5",
+  "name": "Sustained Load Endurance",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "expectNonEmpty": true,
+  "scenario": {
+    "executor": "constant-arrival-rate",
+    "rate": 10,
+    "timeUnit": "1s",
+    "duration": "10m",
+    "preAllocatedVUs": 20,
+    "maxVUs": 40
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "http_req_duration": ["p(95)<1000"]
+  }
+}

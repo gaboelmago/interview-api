@@ -1,0 +1,17 @@
+{
+  "id": "test1",
+  "name": "Baseline Sanity (Small Dataset)",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "expectNonEmpty": true,
+  "scenario": {
+    "executor": "constant-vus",
+    "vus": 5,
+    "duration": "2m"
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "http_req_duration": ["p(95)<200"]
+  }
+}

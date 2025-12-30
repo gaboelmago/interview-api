@@ -1,0 +1,21 @@
+{
+  "id": "test2",
+  "name": "Concurrency Scaling (Small Dataset)",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "expectNonEmpty": true,
+  "scenario": {
+    "executor": "ramping-vus",
+    "stages": [
+      { "duration": "30s", "target": 10 },
+      { "duration": "30s", "target": 25 },
+      { "duration": "30s", "target": 50 },
+      { "duration": "30s", "target": 0 }
+    ]
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "http_req_duration": ["p(95)<1000"]
+  }
+}

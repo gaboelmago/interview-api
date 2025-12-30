@@ -11,6 +11,9 @@ export DATASET := ""
 export MAX_NODES := ""
 export VUS := ""
 export DURATION := ""
+export SEED := ""
+export BASE_URL := ""
+export REPORT_NAME := ""
 
 SMALL_MAX_NODES_DEFAULT := "500"
 SMALL_VUS_DEFAULT := "10"
@@ -55,6 +58,16 @@ test: check-env
   docker compose run --rm migrate
   npm test
 
+# --- OpenAPI / Swagger ---
+
+# Verify the committed OpenAPI snapshot matches the generated spec.
+openapi-check: check-env
+  npm test -- --runInBand test/openapi.snapshot.spec.ts
+
+# Update the committed OpenAPI snapshot intentionally.
+openapi-snapshot: check-env
+  npm run openapi:snapshot
+
 # --- Load testing (local) ---
 
 wait-health:
@@ -80,3 +93,49 @@ load-deep:
 
 load-stress:
   DATASET=stress MAX_NODES=${MAX_NODES:-{{STRESS_MAX_NODES_DEFAULT}}} VUS=${VUS:-{{STRESS_VUS_DEFAULT}}} DURATION=${DURATION:-{{STRESS_DURATION_DEFAULT}}} just load-tree-baseline
+
+# --- Load testing plan (TEST 1..6) ---
+
+load-test1:
+  node scripts/run-load-test.mjs --test 1
+
+load-test2:
+  node scripts/run-load-test.mjs --test 2
+
+load-test3:
+  node scripts/run-load-test.mjs --test 3
+
+load-test4:
+  node scripts/run-load-test.mjs --test 4
+
+load-test5:
+  node scripts/run-load-test.mjs --test 5
+
+load-test6:
+  node scripts/run-load-test.mjs --test 6
+
+load-all:
+  for t in 1 2 3 4 5 6; do node scripts/run-load-test.mjs --test "$t"; done
+
+# --- Load testing plan (WRITE W1..W6) ---
+
+load-write1:
+  node scripts/run-load-test.mjs --test W1
+
+load-write2:
+  node scripts/run-load-test.mjs --test W2
+
+load-write3:
+  node scripts/run-load-test.mjs --test W3
+
+load-write4:
+  node scripts/run-load-test.mjs --test W4
+
+load-write5:
+  node scripts/run-load-test.mjs --test W5
+
+load-write6:
+  node scripts/run-load-test.mjs --test W6
+
+load-write-all:
+  for t in W1 W2 W3 W4 W5 W6; do node scripts/run-load-test.mjs --test "$t"; done

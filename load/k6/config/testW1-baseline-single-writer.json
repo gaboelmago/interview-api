@@ -1,0 +1,20 @@
+{
+  "id": "testW1",
+  "name": "Write Baseline Sanity (Single Writer)",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "scenario": {
+    "executor": "constant-arrival-rate",
+    "rate": 2,
+    "timeUnit": "1s",
+    "duration": "2m",
+    "preAllocatedVUs": 1,
+    "maxVUs": 1
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "checks": ["rate==1"],
+    "http_req_duration": ["p(95)<500"]
+  }
+}

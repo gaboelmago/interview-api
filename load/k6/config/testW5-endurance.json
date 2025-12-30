@@ -1,0 +1,21 @@
+{
+  "id": "testW5",
+  "name": "Write Endurance (Soak)",
+  "dataset": "small",
+  "seed": 1,
+  "maxNodes": 500,
+  "parentCount": 20,
+  "scenario": {
+    "executor": "constant-arrival-rate",
+    "rate": 5,
+    "timeUnit": "1s",
+    "duration": "10m",
+    "preAllocatedVUs": 20,
+    "maxVUs": 40
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "checks": ["rate==1"],
+    "http_req_duration": ["p(95)<1500"]
+  }
+}

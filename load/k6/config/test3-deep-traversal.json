@@ -1,0 +1,17 @@
+{
+  "id": "test3",
+  "name": "Deep Tree Traversal (Deep Dataset)",
+  "dataset": "deep",
+  "seed": 1,
+  "maxNodes": 2000,
+  "expectNonEmpty": true,
+  "scenario": {
+    "executor": "constant-vus",
+    "vus": 10,
+    "duration": "2m"
+  },
+  "thresholds": {
+    "http_req_failed": ["rate==0"],
+    "http_req_duration": ["p(99)<1000"]
+  }
+}

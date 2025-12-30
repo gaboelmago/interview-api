@@ -1,5 +1,9 @@
 import type { Config } from "@jest/types";
 
+process.env.NODE_ENV ??= "test";
+process.env.LOG_PRETTY ??= "false";
+process.env.LOG_LEVEL ??= "silent";
+
 const config: Config.InitialOptions = {
   displayName: "blackbox-e2e",
   rootDir: ".",

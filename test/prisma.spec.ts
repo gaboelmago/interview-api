@@ -61,7 +61,7 @@ describe("Prisma (Phase 2)", () => {
 
     const prisma = moduleRef.get(PrismaService);
 
-    await expect(prisma.onModuleInit()).rejects.toThrow(
+    await expect(prisma.assertDatabaseReady()).rejects.toThrow(
       /Database is not migrated/
     );
 
@@ -87,7 +87,7 @@ describe("Prisma (Phase 2)", () => {
     }).compile();
 
     const prisma = moduleRef.get(PrismaService);
-    await prisma.onModuleInit();
+    await prisma.assertDatabaseReady();
 
     await prisma.treeNode.deleteMany();
 

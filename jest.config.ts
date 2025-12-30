@@ -1,6 +1,10 @@
-import type { Config } from "jest";
+import type { Config } from "@jest/types";
 
-const config: Config = {
+process.env.NODE_ENV ??= "test";
+process.env.LOG_PRETTY ??= "false";
+process.env.LOG_LEVEL ??= "silent";
+
+const config: Config.InitialOptions = {
   moduleFileExtensions: ["js", "json", "ts"],
   rootDir: ".",
   testEnvironment: "node",

@@ -1,0 +1,607 @@
+{
+  "components": {
+    "schemas": {
+      "CreateTreeNodeDto": {
+        "properties": {
+          "label": {
+            "example": "root",
+            "type": "string"
+          },
+          "parentId": {
+            "example": 1,
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "CreateTreeNodeResponseDto": {
+        "properties": {
+          "id": {
+            "example": 123,
+            "type": "number"
+          },
+          "label": {
+            "example": "child",
+            "type": "string"
+          },
+          "parentId": {
+            "example": 1,
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "parentId"
+        ],
+        "type": "object"
+      },
+      "ErrorResponseDto": {
+        "properties": {
+          "error": {
+            "example": "Not Found",
+            "type": "string"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "example": "Cannot GET /api/does-not-exist",
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "path": {
+            "example": "/api/does-not-exist",
+            "type": "string"
+          },
+          "requestId": {
+            "example": "test-req-123",
+            "type": "string"
+          },
+          "statusCode": {
+            "example": 404,
+            "type": "number"
+          },
+          "timestamp": {
+            "example": "2025-12-30T00:00:00.000Z",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "path",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "TreeNodeResponseDto": {
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/TreeNodeResponseDto"
+            },
+            "type": "array"
+          },
+          "id": {
+            "example": 1,
+            "type": "number"
+          },
+          "label": {
+            "example": "root",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "children"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "NestJS Tree REST API",
+    "title": "interview-api",
+    "version": "1"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "HealthController_getHealth[1]",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "ReadyController_getReady[1]",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "db": "ok",
+                    "status": "ok"
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "db": "down",
+                    "status": "degraded"
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "ready"
+        ]
+      }
+    },
+    "/api/tree": {
+      "get": {
+        "operationId": "TreeController_getTrees[1]",
+        "parameters": [
+          {
+            "description": "1-based page number (root-level pagination)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "example": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Page size for root-level pagination (bounds: 1..100). Requires `page`.",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "example": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "If provided, returns the single root tree with this id (as a one-element array).",
+            "in": "query",
+            "name": "rootId",
+            "required": false,
+            "schema": {
+              "example": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TreeNodeResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "tree"
+        ]
+      },
+      "post": {
+        "operationId": "TreeController_createNode[1]",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTreeNodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateTreeNodeResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "tree"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "HealthController_getHealth[0]_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ReadyController_getReady[0]_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "db": "ok",
+                    "status": "ok"
+                  }
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "db": "down",
+                    "status": "degraded"
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "ready"
+        ]
+      }
+    },
+    "/api/v1/tree": {
+      "get": {
+        "operationId": "TreeController_getTrees[0]_v1",
+        "parameters": [
+          {
+            "description": "1-based page number (root-level pagination)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "example": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Page size for root-level pagination (bounds: 1..100). Requires `page`.",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "example": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "If provided, returns the single root tree with this id (as a one-element array).",
+            "in": "query",
+            "name": "rootId",
+            "required": false,
+            "schema": {
+              "example": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TreeNodeResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "tree"
+        ]
+      },
+      "post": {
+        "operationId": "TreeController_createNode[0]_v1",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTreeNodeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateTreeNodeResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "tags": [
+          "tree"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "tags": []
+}

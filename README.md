@@ -72,6 +72,75 @@ Base URL: `http://localhost:${API_PORT:-3000}`
 
 - `GET /api/tree` — list trees (nested)
 - `POST /api/tree` — create node under parent
+- `GET /api/health` — liveness (process up)
+- `GET /api/ready` — readiness (DB reachable)
+
+## Phase 17 Notes (Pagination / Filtering)
+
+`GET /api/tree` is intentionally **unpaginated and unfiltered by default** for this assignment:
+
+- It returns **all root nodes**, each with **full nested children**.
+- No query params are required or applied by default.
+
+### Operational limits
+
+`GET /api/tree` currently loads all nodes from the database and builds the nested response **in-memory**.
+
+- Very large trees can increase memory usage and response size.
+- This is acceptable for the assignment’s scope, but in a production setting you’d typically add guardrails (caps), timeouts, and/or opt-in root-level pagination.
+
+Guardrails implemented in this repo (opt-in via env):
+
+- `TREE_GET_MAX_NODES`: rejects `GET /api/tree` with 400 if total nodes exceeds the cap
+- `TREE_GET_MAX_DEPTH`: rejects `GET /api/tree` with 400 if computed depth exceeds the cap
+
+Additional hardening (Phase 17 Part C):
+
+- **Node HTTP server timeouts** (configured in `src/main.ts` after `listen()`):
+  - `SERVER_KEEP_ALIVE_TIMEOUT_MS`
+  - `SERVER_HEADERS_TIMEOUT_MS` (must be greater than keep-alive; enforced)
+  - `SERVER_REQUEST_TIMEOUT_MS`
+- **Postgres statement timeout** (server-side):
+  - `DB_STATEMENT_TIMEOUT_MS` injects `options=-c statement_timeout=...` into `DATABASE_URL` unless one is already present
+
+## OpenAPI / Swagger
+
+- Swagger UI: `GET /api/docs`
+- OpenAPI JSON: `GET /api/openapi.json`
+
+### Versioning
+
+This API supports URI versioning:
+
+- Versioned: `/api/v1/...` (recommended for clients)
+- Unversioned: `/api/...` (kept for backwards compatibility)
+
+### OpenAPI snapshot (CI guard)
+
+This repo includes an OpenAPI snapshot to catch accidental contract drift.
+
+- Check via tests: `npm test`
+- Update the snapshot intentionally: `npm run openapi:snapshot`
+
+## Error Responses
+
+All API errors follow a single JSON envelope (clients can depend on these fields):
+
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": ["label should not be empty"],
+  "path": "/api/tree",
+  "timestamp": "2025-12-30T00:00:00.000Z",
+  "requestId": "<id>"
+}
+```
+
+Notes:
+
+- `message` is either a string or a string array (validation errors are typically arrays).
+- `requestId` is echoed from `X-Request-Id` when provided; otherwise generated.
 
 ### Examples
 
@@ -93,6 +162,7 @@ curl -sS -X POST http://localhost:${API_PORT:-3000}/api/tree \
 
 - **Tree model choice:** Adjacency list (`TreeNode` rows with an optional `parentId`) via a self-relation in Prisma.
 - **Nested output approach:** `GET /api/tree` queries all nodes once and builds the nested response in-memory by mapping `id -> node` and attaching children to parents; only roots are returned.
+- **Abuse protection:** request body size limit (`BODY_LIMIT`) and basic in-app throttling (`THROTTLE_TTL_SECONDS`, `THROTTLE_LIMIT`). Throttling is in-memory (single-instance) by design.
 
 ## Tests
 

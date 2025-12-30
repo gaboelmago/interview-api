@@ -1,9 +1,8 @@
-import { ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import * as request from "supertest";
 
 import { AppModule } from "../src/app.module";
-import { AllExceptionsFilter } from "../src/common/filters/all-exceptions.filter";
+import { configureApp } from "../src/bootstrap/configure-app";
 import { PrismaService } from "../src/prisma/prisma.service";
 
 async function resetDb(prisma: PrismaService) {
@@ -17,22 +16,35 @@ async function createTestApp() {
     imports: [AppModule],
   }).compile();
 
-  const app = moduleRef.createNestApplication();
-  app.setGlobalPrefix("api");
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    })
-  );
-  app.useGlobalFilters(new AllExceptionsFilter());
+  const app = moduleRef.createNestApplication({ bodyParser: false });
+  configureApp(app);
 
   await app.init();
   return { app, moduleRef };
 }
 
 describe("Tree API (e2e)", () => {
+  it("POST /api/tree rejects oversized JSON payloads with 413", async () => {
+    const prevLimit = process.env.BODY_LIMIT;
+    process.env.BODY_LIMIT = "1kb";
+
+    const { app } = await createTestApp();
+
+    // Roughly > 1kb once JSON encoding overhead is included.
+    const bigLabel = "a".repeat(2_500);
+
+    await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: bigLabel })
+      .expect(413);
+
+    await app.close();
+
+    if (prevLimit === undefined) delete process.env.BODY_LIMIT;
+    else process.env.BODY_LIMIT = prevLimit;
+  });
+
   it("GET /api/health returns 200 and {status: ok}", async () => {
     const { app } = await createTestApp();
 
@@ -40,6 +52,32 @@ describe("Tree API (e2e)", () => {
       .get("/api/health")
       .expect(200)
       .expect({ status: "ok" });
+
+    await app.close();
+  });
+
+  it("GET /api/health includes response header X-Request-Id (non-empty)", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .get("/api/health")
+      .expect(200);
+
+    expect(res.headers["x-request-id"]).toEqual(expect.any(String));
+    expect(String(res.headers["x-request-id"]).length).toBeGreaterThan(0);
+
+    await app.close();
+  });
+
+  it("GET /api/health echoes inbound X-Request-Id", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .get("/api/health")
+      .set("X-Request-Id", "test-123")
+      .expect(200);
+
+    expect(res.headers["x-request-id"]).toBe("test-123");
 
     await app.close();
   });
@@ -55,6 +93,40 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("GET /api/tree rejects when TREE_GET_MAX_NODES is exceeded", async () => {
+    const prev = process.env.TREE_GET_MAX_NODES;
+    process.env.TREE_GET_MAX_NODES = "2";
+
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const root = await prisma.treeNode.create({ data: { label: "root" } });
+    await prisma.treeNode.create({
+      data: { label: "child", parentId: root.id },
+    });
+    await prisma.treeNode.create({
+      data: { label: "child-2", parentId: root.id },
+    });
+
+    const res = await request(app.getHttpServer()).get("/api/tree").expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(String),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+
+    if (prev === undefined) delete process.env.TREE_GET_MAX_NODES;
+    else process.env.TREE_GET_MAX_NODES = prev;
+  });
+
   it("unknown route returns 404 with consistent error shape", async () => {
     const { app } = await createTestApp();
 
@@ -68,7 +140,21 @@ describe("Tree API (e2e)", () => {
       message: "Cannot GET /api/does-not-exist",
       path: "/api/does-not-exist",
       timestamp: expect.any(String),
+      requestId: expect.any(String),
     });
+
+    await app.close();
+  });
+
+  it("unknown route includes requestId in body when X-Request-Id is provided", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .get("/api/does-not-exist")
+      .set("X-Request-Id", "test-err-1")
+      .expect(404);
+
+    expect(res.body.requestId).toBe("test-err-1");
 
     await app.close();
   });
@@ -127,6 +213,179 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("GET /api/tree supports root-level pagination and returns pagination headers", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const rootA = await prisma.treeNode.create({ data: { label: "a" } });
+    const aChild = await prisma.treeNode.create({
+      data: { label: "a-1", parentId: rootA.id },
+    });
+    const rootB = await prisma.treeNode.create({ data: { label: "b" } });
+    await prisma.treeNode.create({ data: { label: "c" } });
+
+    const res = await request(app.getHttpServer())
+      .get("/api/tree?page=1&pageSize=2")
+      .expect(200);
+
+    expect(res.headers["x-total-roots"]).toBe("3");
+    expect(res.headers["x-page"]).toBe("1");
+    expect(res.headers["x-page-size"]).toBe("2");
+
+    expect(res.body).toEqual([
+      {
+        id: rootA.id,
+        label: "a",
+        children: [{ id: aChild.id, label: "a-1", children: [] }],
+      },
+      { id: rootB.id, label: "b", children: [] },
+    ]);
+
+    await app.close();
+  });
+
+  it("GET /api/tree pagination returns 200 and [] when page is beyond range (still sets headers)", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    await prisma.treeNode.create({ data: { label: "a" } });
+    await prisma.treeNode.create({ data: { label: "b" } });
+    await prisma.treeNode.create({ data: { label: "c" } });
+
+    const res = await request(app.getHttpServer())
+      .get("/api/tree?page=99&pageSize=2")
+      .expect(200);
+
+    expect(res.headers["x-total-roots"]).toBe("3");
+    expect(res.headers["x-page"]).toBe("99");
+    expect(res.headers["x-page-size"]).toBe("2");
+    expect(res.body).toEqual([]);
+
+    await app.close();
+  });
+
+  it("GET /api/tree pagination rejects invalid page/pageSize", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .get("/api/tree?page=0&pageSize=101")
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(Array),
+      path: "/api/tree?page=0&pageSize=101",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("GET /api/tree supports filtering by rootId (returns single tree array)", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const root = await prisma.treeNode.create({ data: { label: "root" } });
+    const child = await prisma.treeNode.create({
+      data: { label: "child", parentId: root.id },
+    });
+    await prisma.treeNode.create({ data: { label: "other-root" } });
+
+    await request(app.getHttpServer())
+      .get(`/api/tree?rootId=${root.id}`)
+      .expect(200)
+      .expect([
+        {
+          id: root.id,
+          label: "root",
+          children: [{ id: child.id, label: "child", children: [] }],
+        },
+      ]);
+
+    await app.close();
+  });
+
+  it("GET /api/tree?rootId=... returns 404 when root does not exist", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const res = await request(app.getHttpServer())
+      .get("/api/tree?rootId=999")
+      .expect(404);
+
+    expect(res.body).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: expect.any(String),
+      path: "/api/tree?rootId=999",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("GET /api/tree?rootId=... rejects when the node exists but is not a root", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const root = await prisma.treeNode.create({ data: { label: "root" } });
+    const child = await prisma.treeNode.create({
+      data: { label: "child", parentId: root.id },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/tree?rootId=${child.id}`)
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(String),
+      path: `/api/tree?rootId=${child.id}`,
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("GET /api/tree rejects combining rootId with pagination", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const root = await prisma.treeNode.create({ data: { label: "root" } });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/tree?rootId=${root.id}&page=1&pageSize=1`)
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(String),
+      path: `/api/tree?rootId=${root.id}&page=1&pageSize=1`,
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
   it("GET /api/tree supports deep nesting (>2 levels)", async () => {
     const { app, moduleRef } = await createTestApp();
 
@@ -170,6 +429,43 @@ describe("Tree API (e2e)", () => {
     await app.close();
   });
 
+  it("GET /api/tree rejects when TREE_GET_MAX_DEPTH is exceeded", async () => {
+    const prev = process.env.TREE_GET_MAX_DEPTH;
+    process.env.TREE_GET_MAX_DEPTH = "3";
+
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const n1 = await prisma.treeNode.create({ data: { label: "n1" } });
+    const n2 = await prisma.treeNode.create({
+      data: { label: "n2", parentId: n1.id },
+    });
+    const n3 = await prisma.treeNode.create({
+      data: { label: "n3", parentId: n2.id },
+    });
+    await prisma.treeNode.create({
+      data: { label: "n4", parentId: n3.id },
+    });
+
+    const res = await request(app.getHttpServer()).get("/api/tree").expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(String),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+
+    if (prev === undefined) delete process.env.TREE_GET_MAX_DEPTH;
+    else process.env.TREE_GET_MAX_DEPTH = prev;
+  });
+
   it("POST /api/tree with empty body returns 400", async () => {
     const { app } = await createTestApp();
 
@@ -178,6 +474,27 @@ describe("Tree API (e2e)", () => {
       .set("content-type", "application/json")
       .send({})
       .expect(400);
+
+    await app.close();
+  });
+
+  it("POST /api/tree validation errors use the standard error envelope", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({})
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(Array),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
 
     await app.close();
   });

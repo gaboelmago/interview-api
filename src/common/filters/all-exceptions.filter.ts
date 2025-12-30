@@ -14,6 +14,7 @@ type ErrorResponseBody = {
   message: string | string[];
   path: string;
   timestamp: string;
+  requestId?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -31,6 +32,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const path = (req?.originalUrl ?? req?.url ?? "") as string;
     const timestamp = new Date().toISOString();
+    const requestId = (req?.requestId ?? req?.id) as string | undefined;
 
     // Defaults: safe 500
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -62,6 +64,50 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         message = exception.message;
         error = "Error";
+      }
+    }
+    // Express/body-parser style errors (invalid JSON, payload too large, etc)
+    else if (isRecord(exception)) {
+      const statusRaw =
+        (exception.statusCode as unknown) ?? (exception.status as unknown);
+      const statusCandidate =
+        typeof statusRaw === "number" ? statusRaw : Number.NaN;
+
+      if (
+        Number.isFinite(statusCandidate) &&
+        statusCandidate >= 400 &&
+        statusCandidate <= 599
+      ) {
+        statusCode = statusCandidate;
+
+        if (statusCode === HttpStatus.BAD_REQUEST) {
+          error = "Bad Request";
+          message =
+            typeof exception.message === "string"
+              ? exception.message
+              : "Bad Request";
+        } else if (statusCode === HttpStatus.PAYLOAD_TOO_LARGE) {
+          error = "Payload Too Large";
+          message =
+            typeof exception.message === "string"
+              ? exception.message
+              : "Payload Too Large";
+        } else {
+          error = "Error";
+          message =
+            typeof exception.message === "string" ? exception.message : "Error";
+        }
+
+        this.logger.warn(
+          { path, statusCode },
+          exception instanceof Error ? exception.stack : String(exception)
+        );
+      } else {
+        // fallthrough to unknown
+        this.logger.error(
+          { path, statusCode },
+          exception instanceof Error ? exception.stack : String(exception)
+        );
       }
     }
     // Minimal Prisma -> HTTP mapping (kept intentionally small)
@@ -111,6 +157,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       path,
       timestamp,
+      ...(requestId ? { requestId } : {}),
     };
 
     res.status(statusCode).json(body);

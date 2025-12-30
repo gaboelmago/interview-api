@@ -1,6 +1,8 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
+import { maybeApplyStatementTimeoutEnv } from "../config/db-timeout";
+
 function isPrismaErrorWithCode(error: unknown): error is { code: string } {
   return (
     typeof error === "object" &&
@@ -20,9 +22,24 @@ export class PrismaService
       throw new Error("DATABASE_URL is required");
     }
 
+    // Phase 17 Part C: opt-in DB statement timeout (server-side) via env.
+    // This does NOT connect on startup, preserving liveness-only semantics.
+    maybeApplyStatementTimeoutEnv(process.env);
+  }
+
+  /**
+   * Explicit readiness check used by /api/ready and tests.
+   *
+   * NOTE: We intentionally do not connect on app startup so /api/health remains
+   * liveness-only even when the DB is unreachable.
+   */
+  async assertDatabaseReady(): Promise<void> {
     await this.$connect();
 
     try {
+      // Basic connectivity ping.
+      await this.$queryRaw`SELECT 1`;
+
       // Guardrail: fail with a clear message if migrations haven't been applied
       // (e.g., the TreeNode table doesn't exist in the selected schema).
       await this.treeNode.count();

@@ -45,6 +45,63 @@ describe("CreateTreeNodeDto", () => {
     expect(labelError).toBeDefined();
   });
 
+  it("rejects whitespace-only label", async () => {
+    const dto = plainToInstance(CreateTreeNodeDto, {
+      label: "   ",
+      parentId: 1,
+    });
+
+    const errors = await validate(dto);
+    const labelError = errors.find((e) => e.property === "label");
+    expect(labelError).toBeDefined();
+  });
+
+  it("rejects label longer than 255 characters", async () => {
+    const dto = plainToInstance(CreateTreeNodeDto, {
+      label: "a".repeat(256),
+      parentId: 1,
+    });
+
+    const errors = await validate(dto);
+    const labelError = errors.find((e) => e.property === "label");
+    expect(labelError).toBeDefined();
+  });
+
+  it("trims label (leading/trailing whitespace) before validation", async () => {
+    const dto = plainToInstance(CreateTreeNodeDto, {
+      label: "  root  ",
+      parentId: 1,
+    });
+
+    // Contract: labels are normalized on input.
+    expect(dto.label).toBe("root");
+
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects label with control characters (newline)", async () => {
+    const dto = plainToInstance(CreateTreeNodeDto, {
+      label: "hi\nthere",
+      parentId: 1,
+    });
+
+    const errors = await validate(dto);
+    const labelError = errors.find((e) => e.property === "label");
+    expect(labelError).toBeDefined();
+  });
+
+  it("rejects label with control characters (NUL)", async () => {
+    const dto = plainToInstance(CreateTreeNodeDto, {
+      label: "hi\u0000there",
+      parentId: 1,
+    });
+
+    const errors = await validate(dto);
+    const labelError = errors.find((e) => e.property === "label");
+    expect(labelError).toBeDefined();
+  });
+
   it("rejects non-integer parentId", async () => {
     const dto = plainToInstance(CreateTreeNodeDto, {
       label: "x",

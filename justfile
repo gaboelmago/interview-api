@@ -58,6 +58,13 @@ test: check-env
   docker compose run --rm migrate
   npm test
 
+# Run a single Jest test file (ensures DB is up + migrated).
+# Example: `just test-file test/tree.e2e-spec.ts`
+test-file FILE: check-env
+  docker compose up -d db
+  docker compose run --rm migrate
+  npm test -- --runInBand "{{FILE}}"
+
 # --- OpenAPI / Swagger ---
 
 # Verify the committed OpenAPI snapshot matches the generated spec.

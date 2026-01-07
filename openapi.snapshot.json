@@ -343,6 +343,16 @@
             },
             "description": ""
           },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
           "429": {
             "content": {
               "application/json": {
@@ -572,6 +582,16 @@
             "description": ""
           },
           "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            },
+            "description": ""
+          },
+          "415": {
             "content": {
               "application/json": {
                 "schema": {

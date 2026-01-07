@@ -78,11 +78,9 @@ export class TreeService {
       else rootsAll.push(node);
     }
 
-    const sortRecursively = (items: TreeNodeResponse[]) => {
-      items.sort((a, b) => a.id - b.id);
-      for (const item of items) sortRecursively(item.children);
-    };
-    sortRecursively(rootsAll);
+    // Intentionally avoid recursive traversal here: deep trees can overflow the
+    // JS call stack (RangeError). Ordering remains deterministic because the DB
+    // query is ordered by id ascending and we attach children while iterating.
 
     if (limits.maxDepth != null) {
       const depth = this.computeMaxDepth(rootsAll);

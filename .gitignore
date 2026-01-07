@@ -21,3 +21,6 @@ load/k6/results/
 # OS / editor
 .DS_Store
 .idea/
+
+# Dev Notes
+dev-notes/

@@ -24,6 +24,59 @@ async function createTestApp() {
 }
 
 describe("Tree API (e2e)", () => {
+  it("GET /api/tree does not 500 on very deep trees (should reject with depth limit)", async () => {
+    jest.setTimeout(60_000);
+
+    const prevDepth = process.env.TREE_GET_MAX_DEPTH;
+    const prevNodes = process.env.TREE_GET_MAX_NODES;
+
+    // Expected behavior: a bounded, non-500 rejection via the depth cap.
+    process.env.TREE_GET_MAX_DEPTH = "50";
+    process.env.TREE_GET_MAX_NODES = "50000";
+
+    const { app, moduleRef } = await createTestApp();
+
+    try {
+      const prisma = moduleRef.get(PrismaService);
+      await resetDb(prisma);
+
+      // Deep enough to overflow recursive traversal on typical Node call stacks.
+      const N = 20_000;
+
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "TreeNode" ("id", "label", "parentId") VALUES (1, 'n1', NULL);`
+      );
+
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "TreeNode" ("id", "label", "parentId")
+         SELECT i, 'n' || i, i - 1
+         FROM generate_series(2, ${N}) AS i;`
+      );
+
+      const res = await request(app.getHttpServer())
+        .get("/api/tree")
+        .expect(400);
+
+      expect(res.body).toEqual({
+        statusCode: 400,
+        error: "Bad Request",
+        message: expect.any(String),
+        path: "/api/tree",
+        timestamp: expect.any(String),
+        requestId: expect.any(String),
+      });
+    } finally {
+      await app.close();
+      await moduleRef.close();
+
+      if (prevDepth === undefined) delete process.env.TREE_GET_MAX_DEPTH;
+      else process.env.TREE_GET_MAX_DEPTH = prevDepth;
+
+      if (prevNodes === undefined) delete process.env.TREE_GET_MAX_NODES;
+      else process.env.TREE_GET_MAX_NODES = prevNodes;
+    }
+  });
+
   it("POST /api/tree rejects oversized JSON payloads with 413", async () => {
     const prevLimit = process.env.BODY_LIMIT;
     process.env.BODY_LIMIT = "1kb";
@@ -497,6 +550,117 @@ describe("Tree API (e2e)", () => {
     });
 
     await app.close();
+  });
+
+  it("POST /api/tree rejects whitespace-only label", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "   " })
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(Array),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("POST /api/tree rejects label longer than 255 characters (even when under BODY_LIMIT)", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "a".repeat(256) })
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(Array),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("POST /api/tree rejects label with control characters", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "hi\nthere" })
+      .expect(400);
+
+    expect(res.body).toEqual({
+      statusCode: 400,
+      error: "Bad Request",
+      message: expect.any(Array),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("POST /api/tree rejects application/x-www-form-urlencoded with 415 (JSON-only)", async () => {
+    const { app } = await createTestApp();
+
+    const res = await request(app.getHttpServer())
+      .post("/api/tree")
+      .type("form")
+      .send({ label: "root" })
+      .expect(415);
+
+    expect(res.body).toEqual({
+      statusCode: 415,
+      error: expect.any(String),
+      message: expect.any(String),
+      path: "/api/tree",
+      timestamp: expect.any(String),
+      requestId: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it("POST /api/tree trims label before persisting", async () => {
+    const { app, moduleRef } = await createTestApp();
+
+    const prisma = moduleRef.get(PrismaService);
+    await resetDb(prisma);
+
+    const createdRes = await request(app.getHttpServer())
+      .post("/api/tree")
+      .set("content-type", "application/json")
+      .send({ label: "  root  " })
+      .expect(201);
+
+    expect(createdRes.body).toEqual({
+      id: expect.any(Number),
+      label: "root",
+      parentId: null,
+    });
+
+    await request(app.getHttpServer())
+      .get("/api/tree")
+      .expect(200)
+      .expect([{ id: createdRes.body.id, label: "root", children: [] }]);
+
+    await app.close();
+    await moduleRef.close();
   });
 
   it("POST /api/tree creates a new root when parentId is missing", async () => {

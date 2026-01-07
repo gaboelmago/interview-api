@@ -6,6 +6,7 @@ import {
   Post,
   Query,
   Res,
+  UseGuards,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
@@ -18,6 +19,7 @@ import {
   ApiPayloadTooLargeResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
+  ApiUnsupportedMediaTypeResponse,
 } from "@nestjs/swagger";
 import { getSchemaPath } from "@nestjs/swagger";
 import type { Response } from "express";
@@ -28,6 +30,7 @@ import { ErrorResponseDto } from "../common/dto/error-response.dto";
 import { CreateTreeNodeResponseDto } from "./dto/create-tree-node-response.dto";
 import { TreeNodeResponseDto } from "./dto/tree-node-response.dto";
 import { GetTreeQueryDto } from "./dto/get-tree-query.dto";
+import { JsonOnlyGuard } from "./guards/json-only.guard";
 
 import {
   getReadThrottleLimit,
@@ -95,12 +98,14 @@ export class TreeController {
   }
 
   @Post()
+  @UseGuards(JsonOnlyGuard)
   @Throttle({ default: { limit: writeLimit, ttl: ttlMs } })
   @ApiCreatedResponse({ type: CreateTreeNodeResponseDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiNotFoundResponse({ type: ErrorResponseDto })
   @ApiPayloadTooLargeResponse({ type: ErrorResponseDto })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
+  @ApiUnsupportedMediaTypeResponse({ type: ErrorResponseDto })
   createNode(@Body() dto: CreateTreeNodeDto) {
     return this.treeService.createNode(dto);
   }

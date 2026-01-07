@@ -4,7 +4,7 @@ import {
   VersioningType,
 } from "@nestjs/common";
 import type { INestApplication } from "@nestjs/common";
-import { json, urlencoded } from "express";
+import { json } from "express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 import { AllExceptionsFilter } from "../common/filters/all-exceptions.filter";
@@ -15,7 +15,6 @@ export function configureApp(app: INestApplication) {
 
   // Explicit HTTP-layer body limits (Express) for abuse protection.
   app.use(json({ limit: bodyLimit }));
-  app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   app.setGlobalPrefix("api");
 
